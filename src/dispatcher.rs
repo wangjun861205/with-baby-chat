@@ -23,6 +23,12 @@ impl Handler<InnerMessage> for Dispatcher {
     fn handle(&mut self, msg: InnerMessage, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             InnerMessage::Register { name, addr } => {
+                let users = self
+                    .addrs
+                    .keys()
+                    .map(|v| v.clone())
+                    .collect::<Vec<String>>();
+                addr.try_send(InnerMessage::Users(users)).unwrap();
                 self.addrs.insert(name, addr);
             }
             InnerMessage::Deregister { name } => {
@@ -35,6 +41,7 @@ impl Handler<InnerMessage> for Dispatcher {
                     .try_send(InnerMessage::Send { from, to, content })
                     .unwrap();
             }
+            _ => {}
         }
     }
 }

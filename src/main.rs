@@ -45,6 +45,9 @@ impl Handler<InnerMessage> for WS {
             InnerMessage::Send { from, to, content } => {
                 ctx.text(serde_json::to_string(&OuterMessage::Out { from, content }).unwrap());
             }
+            InnerMessage::Users(users) => {
+                ctx.text(serde_json::to_string(&OuterMessage::Users(users)).unwrap());
+            }
             _ => {}
         }
     }
@@ -73,6 +76,7 @@ impl StreamHandler<Result<Message, ProtocolError>> for WS {
                         })
                         .unwrap(),
                     ),
+                    _ => {}
                 }
             }
             Message::Ping(m) => ctx.pong(&m),

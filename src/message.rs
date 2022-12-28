@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum OuterMessage {
     In { to: String, content: String },
     Out { from: String, content: String },
+    Users(Vec<String>),
 }
 
 #[derive(Debug)]
@@ -22,6 +23,7 @@ pub enum InnerMessage {
         to: String,
         content: String,
     },
+    Users(Vec<String>),
 }
 
 impl actix::Message for InnerMessage {
