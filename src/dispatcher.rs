@@ -6,6 +6,14 @@ pub struct Dispatcher {
     addrs: HashMap<String, Addr<WS>>,
 }
 
+impl Dispatcher {
+    pub fn new() -> Self {
+        Self {
+            addrs: HashMap::new(),
+        }
+    }
+}
+
 impl Actor for Dispatcher {
     type Context = Context<Self>;
 }
@@ -16,6 +24,9 @@ impl Handler<InnerMessage> for Dispatcher {
         match msg {
             InnerMessage::Register { name, addr } => {
                 self.addrs.insert(name, addr);
+            }
+            InnerMessage::Deregister { name } => {
+                self.addrs.remove(&name);
             }
             InnerMessage::Send { from, to, content } => {
                 self.addrs

@@ -14,6 +14,9 @@ pub enum InnerMessage {
         name: String,
         addr: Addr<WS>,
     },
+    Deregister {
+        name: String,
+    },
     Send {
         from: String,
         to: String,
