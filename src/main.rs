@@ -1,7 +1,11 @@
+mod dispatcher;
+mod message;
+
 use actix::{self, Actor, Addr, AsyncContext, Context, Handler, Registry, StreamHandler};
 use actix_web::web::{self, get, Data, Path};
 use actix_web::{http::StatusCode, App, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws::{self, Message, ProtocolError, WebsocketContext, WsResponseBuilder};
+use message::{InnerMessage, OuterMessage};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
@@ -23,9 +27,9 @@ impl actix::Message for Msg {
     type Result = ();
 }
 
-struct WS {
+pub struct WS {
     addrs: Data<Mutex<HashMap<String, Addr<WS>>>>,
-    name: String,
+    pub name: String,
 }
 
 impl Actor for WS {
@@ -36,6 +40,18 @@ impl Handler<Msg> for WS {
     type Result = ();
     fn handle(&mut self, msg: Msg, ctx: &mut Self::Context) -> Self::Result {
         ctx.text(serde_json::to_string(&msg).unwrap());
+    }
+}
+
+impl Handler<InnerMessage> for WS {
+    type Result = ();
+    fn handle(&mut self, msg: InnerMessage, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            InnerMessage::Send { from, to, content } => {
+                ctx.text(serde_json::to_string(&OuterMessage::Out { from, content }).unwrap());
+            }
+            _ => {}
+        }
     }
 }
 
