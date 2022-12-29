@@ -1,4 +1,5 @@
-use crate::{message::InnerMessage, WS};
+use crate::message::InnerMessage;
+use crate::websocket::WS;
 use actix::{Actor, Addr, Context, Handler};
 use std::collections::HashMap;
 

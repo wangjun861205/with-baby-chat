@@ -1,6 +1,13 @@
-use crate::WS;
+use crate::websocket::WS;
 use actix::Addr;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum NotifyLevel {
+    Notify,
+    Warning,
+    Error,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum OuterMessage {
@@ -8,6 +15,7 @@ pub enum OuterMessage {
     Out { from: String, content: String },
     Broadcast(String),
     Users(Vec<String>),
+    Notify { level: NotifyLevel, content: String },
 }
 
 #[derive(Debug)]
@@ -18,6 +26,7 @@ pub enum InnerMessage {
     Users(Vec<String>),
     Broadcast { from: String, content: String },
     Out { from: String, content: String },
+    Notify { level: NotifyLevel, content: String },
 }
 
 impl actix::Message for InnerMessage {
