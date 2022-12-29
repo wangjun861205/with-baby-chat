@@ -66,8 +66,11 @@ impl Author for JWTAuthor {
     fn signup(&self, mut db: PooledConnection<ConnectionManager<PgConnection>>, account: String, credential: String) -> Result<usize, crate::error::Error> {
         let rng = thread_rng();
         let salt: String = rng.sample_iter(Alphanumeric).take(32).map(|c| c as char).collect();
+        let mut hasher = Sha384::new();
+        hasher.update(format!("{}{}", credential, salt));
+        let hashed_pwd = format!("{:x}", hasher.finalize());
         let res = diesel::insert_into(users::table)
-            .values((users::username.eq(account), users::password.eq(credential), users::salt.eq(salt)))
+            .values((users::username.eq(account), users::password.eq(hashed_pwd), users::salt.eq(salt)))
             .execute(&mut db)?;
         Ok(res)
     }

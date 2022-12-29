@@ -1,25 +1,26 @@
 use crate::message::InnerMessage;
 use crate::websocket::WS;
+use crate::Author;
 use actix::{Actor, Addr, Context, Handler};
 use std::collections::HashMap;
 
-pub struct Dispatcher {
-    addrs: HashMap<String, Addr<WS>>,
+pub struct Dispatcher<A: Author + Unpin + 'static> {
+    addrs: HashMap<String, Addr<WS<A>>>,
 }
 
-impl Dispatcher {
+impl<A: Author + Unpin + 'static> Dispatcher<A> {
     pub fn new() -> Self {
         Self { addrs: HashMap::new() }
     }
 }
 
-impl Actor for Dispatcher {
+impl<A: Author + Unpin + 'static> Actor for Dispatcher<A> {
     type Context = Context<Self>;
 }
 
-impl Handler<InnerMessage> for Dispatcher {
+impl<A: Author + Unpin + 'static> Handler<InnerMessage<A>> for Dispatcher<A> {
     type Result = ();
-    fn handle(&mut self, msg: InnerMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: InnerMessage<A>, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             InnerMessage::Register { name, addr } => {
                 let users = self.addrs.keys().map(|v| v.clone()).collect::<Vec<String>>();
