@@ -6,24 +6,18 @@ use serde::{Deserialize, Serialize};
 pub enum OuterMessage {
     In { to: String, content: String },
     Out { from: String, content: String },
+    Broadcast(String),
     Users(Vec<String>),
 }
 
 #[derive(Debug)]
 pub enum InnerMessage {
-    Register {
-        name: String,
-        addr: Addr<WS>,
-    },
-    Deregister {
-        name: String,
-    },
-    Send {
-        from: String,
-        to: String,
-        content: String,
-    },
+    Register { name: String, addr: Addr<WS> },
+    Deregister { name: String },
+    Send { from: String, to: String, content: String },
     Users(Vec<String>),
+    Broadcast { from: String, content: String },
+    Out { from: String, content: String },
 }
 
 impl actix::Message for InnerMessage {

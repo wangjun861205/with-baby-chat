@@ -2,25 +2,12 @@ mod dispatcher;
 mod message;
 
 use crate::dispatcher::Dispatcher;
-use actix::{self, Actor, Addr, AsyncContext, Context, Handler, Registry, StreamHandler};
+use actix::{self, Actor, Addr, Handler, StreamHandler};
 use actix_web::web::{self, get, Data, Path};
-use actix_web::{http::StatusCode, App, HttpRequest, HttpResponse, HttpServer};
-use actix_web_actors::ws::{self, Message, ProtocolError, WebsocketContext, WsResponseBuilder};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer};
+use actix_web_actors::ws::{Message, ProtocolError, WebsocketContext, WsResponseBuilder};
 use message::{InnerMessage, OuterMessage};
-use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-#[derive(Debug, Serialize)]
-pub struct Msg {
-    from: String,
-    content: String,
-}
-
-impl actix::Message for Msg {
-    type Result = ();
-}
 
 pub struct WS {
     pub name: String,
@@ -29,13 +16,6 @@ pub struct WS {
 
 impl Actor for WS {
     type Context = WebsocketContext<Self>;
-}
-
-impl Handler<Msg> for WS {
-    type Result = ();
-    fn handle(&mut self, msg: Msg, ctx: &mut Self::Context) -> Self::Result {
-        ctx.text(serde_json::to_string(&msg).unwrap());
-    }
 }
 
 impl Handler<InnerMessage> for WS {
@@ -48,6 +28,7 @@ impl Handler<InnerMessage> for WS {
             InnerMessage::Users(users) => {
                 ctx.text(serde_json::to_string(&OuterMessage::Users(users)).unwrap());
             }
+            InnerMessage::Out { from, content } => ctx.text(serde_json::to_string(&OuterMessage::Out { from: from, content: content }).unwrap()),
             _ => {}
         }
     }
@@ -69,34 +50,26 @@ impl StreamHandler<Result<Message, ProtocolError>> for WS {
                             })
                             .unwrap();
                     }
-                    OuterMessage::Out { from, content } => ctx.text(
-                        serde_json::to_string(&OuterMessage::Out {
-                            from: from,
-                            content: content,
-                        })
-                        .unwrap(),
-                    ),
+                    OuterMessage::Out { from, content } => ctx.text(serde_json::to_string(&OuterMessage::Out { from: from, content: content }).unwrap()),
+                    OuterMessage::Broadcast(content) => {
+                        self.dispatcher
+                            .try_send(InnerMessage::Broadcast {
+                                from: self.name.clone(),
+                                content: content,
+                            })
+                            .unwrap();
+                    }
                     _ => {}
                 }
             }
             Message::Ping(m) => ctx.pong(&m),
-            Message::Close(_) => self
-                .dispatcher
-                .try_send(InnerMessage::Deregister {
-                    name: self.name.clone(),
-                })
-                .unwrap(),
+            Message::Close(_) => self.dispatcher.try_send(InnerMessage::Deregister { name: self.name.clone() }).unwrap(),
             _ => {}
         }
     }
 }
 
-async fn login(
-    dispatcher: Data<Addr<Dispatcher>>,
-    name: Path<(String,)>,
-    req: HttpRequest,
-    stream: web::Payload,
-) -> HttpResponse {
+async fn login(dispatcher: Data<Addr<Dispatcher>>, name: Path<(String,)>, req: HttpRequest, stream: web::Payload) -> HttpResponse {
     let name = name.into_inner().0;
     let (addr, resp) = WsResponseBuilder::new(
         WS {
@@ -108,12 +81,7 @@ async fn login(
     )
     .start_with_addr()
     .unwrap();
-    dispatcher
-        .try_send(InnerMessage::Register {
-            name: name.clone(),
-            addr: addr,
-        })
-        .unwrap();
+    dispatcher.try_send(InnerMessage::Register { name: name.clone(), addr: addr }).unwrap();
     resp
 }
 
@@ -121,13 +89,9 @@ async fn login(
 async fn main() -> Result<(), std::io::Error> {
     let dispatcher = Dispatcher::new();
     let addr = dispatcher.start();
-    HttpServer::new(move || {
-        App::new()
-            .app_data(Data::new(addr.clone()))
-            .route("/login/{name}", get().to(login))
-    })
-    .bind("0.0.0.0:8000")
-    .unwrap()
-    .run()
-    .await
+    HttpServer::new(move || App::new().app_data(Data::new(addr.clone())).route("/login/{name}", get().to(login)))
+        .bind("0.0.0.0:8000")
+        .unwrap()
+        .run()
+        .await
 }

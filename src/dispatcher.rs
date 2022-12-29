@@ -8,9 +8,7 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     pub fn new() -> Self {
-        Self {
-            addrs: HashMap::new(),
-        }
+        Self { addrs: HashMap::new() }
     }
 }
 
@@ -23,11 +21,7 @@ impl Handler<InnerMessage> for Dispatcher {
     fn handle(&mut self, msg: InnerMessage, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             InnerMessage::Register { name, addr } => {
-                let users = self
-                    .addrs
-                    .keys()
-                    .map(|v| v.clone())
-                    .collect::<Vec<String>>();
+                let users = self.addrs.keys().map(|v| v.clone()).collect::<Vec<String>>();
                 addr.try_send(InnerMessage::Users(users)).unwrap();
                 self.addrs.insert(name, addr);
             }
@@ -35,12 +29,18 @@ impl Handler<InnerMessage> for Dispatcher {
                 self.addrs.remove(&name);
             }
             InnerMessage::Send { from, to, content } => {
-                self.addrs
-                    .get(&(to))
-                    .unwrap()
-                    .try_send(InnerMessage::Send { from, to, content })
-                    .unwrap();
+                self.addrs.get(&(to)).unwrap().try_send(InnerMessage::Out { from, content }).unwrap();
             }
+            InnerMessage::Broadcast { from, content } => {
+                for addr in self.addrs.values() {
+                    addr.try_send(InnerMessage::Out {
+                        from: from.clone(),
+                        content: content.clone(),
+                    })
+                    .unwrap();
+                }
+            }
+
             _ => {}
         }
     }
