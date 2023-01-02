@@ -1,14 +1,19 @@
 use crate::dispatcher::Dispatcher;
 use crate::message::{InnerMessage, NotifyLevel, OuterMessage};
+use crate::models::User;
 use crate::Author;
 use actix::{Actor, Addr, Handler, StreamHandler};
 use actix_web::web::Data;
 use actix_web_actors::ws::{Message, ProtocolError, WebsocketContext};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
+#[derive(Clone)]
 pub struct WS<A: Author + Unpin + 'static> {
     pub name: String,
     pub dispatcher: Data<Addr<Dispatcher<A>>>,
     pub author: Data<A>,
+    pub users: Data<Mutex<HashMap<String, Option<WS<A>>>>>,
 }
 
 impl<A: Author + Unpin + 'static> Actor for WS<A> {

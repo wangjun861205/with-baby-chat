@@ -1,7 +1,7 @@
-use crate::message::InnerMessage;
+use crate::message::{InnerMessage, NotifyLevel};
 use crate::websocket::WS;
 use crate::Author;
-use actix::{Actor, Addr, Context, Handler};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, WrapFuture};
 use std::collections::HashMap;
 
 pub struct Dispatcher<A: Author + Unpin + 'static> {
@@ -16,6 +16,9 @@ impl<A: Author + Unpin + 'static> Dispatcher<A> {
 
 impl<A: Author + Unpin + 'static> Actor for Dispatcher<A> {
     type Context = Context<Self>;
+    fn started(&mut self, ctx: &mut Self::Context) {
+        ctx.set_mailbox_capacity(1 << 32 - 1);
+    }
 }
 
 impl<A: Author + Unpin + 'static> Handler<InnerMessage<A>> for Dispatcher<A> {
