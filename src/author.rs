@@ -11,8 +11,11 @@ use jwt::{AlgorithmType, Header, SignWithKey, Token, VerifyWithKey};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
+use sqlx::{query, query_as, FromRow, Pool, Postgres};
+use std::future::Future;
+use std::pin::Pin;
 
-#[derive(Queryable)]
+#[derive(FromRow)]
 pub struct User {
     id: i32,
     username: String,
@@ -37,24 +40,26 @@ impl JWTAuthor {
 }
 
 impl Author for JWTAuthor {
-    fn auth(&self, mut db: PooledConnection<ConnectionManager<PgConnection>>, account: String, credential: String) -> Result<String, Error> {
-        let user: User = users::table.filter(users::username.eq(account.clone())).get_result(&mut db)?;
-        let mut hasher = Sha384::new();
-        hasher.update(format!("{}{}", credential, user.salt));
-        let hashed_pwd = format!("{:x}", hasher.finalize());
-        if user.password != hashed_pwd {
-            return Err(Error("invalid account".into()));
-        }
-        let key: Hmac<Sha384> = Hmac::new_from_slice(&self.secret)?;
-        let token = Token::new(
-            Header {
-                algorithm: AlgorithmType::Hs384,
-                ..Default::default()
-            },
-            Claim { account },
-        )
-        .sign_with_key(&key)?;
-        Ok(token.as_str().to_owned())
+    fn auth(&self, mut db: Data<Pool<Postgres>>, account: String, credential: String) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
+        Box::pin(async move {
+            let user: User = query_as("SELECT * FROM users WHERE username = $1").bind(account).fetch_one(db.as_ref()).await?;
+            let mut hasher = Sha384::new();
+            hasher.update(format!("{}{}", credential, user.salt));
+            let hashed_pwd = format!("{:x}", hasher.finalize());
+            if user.password != hashed_pwd {
+                return Err(Error("invalid account".into()));
+            }
+            let key: Hmac<Sha384> = Hmac::new_from_slice(&self.secret)?;
+            let token = Token::new(
+                Header {
+                    algorithm: AlgorithmType::Hs384,
+                    ..Default::default()
+                },
+                Claim { account },
+            )
+            .sign_with_key(&key)?;
+            Ok(token.as_str().to_owned())
+        })
     }
 
     fn verify(&self, token_str: String) -> Result<String, crate::error::Error> {
@@ -63,15 +68,20 @@ impl Author for JWTAuthor {
         Ok(token.claims().account.clone())
     }
 
-    fn signup(&self, mut db: PooledConnection<ConnectionManager<PgConnection>>, account: String, credential: String) -> Result<usize, crate::error::Error> {
-        let rng = thread_rng();
-        let salt: String = rng.sample_iter(Alphanumeric).take(32).map(|c| c as char).collect();
-        let mut hasher = Sha384::new();
-        hasher.update(format!("{}{}", credential, salt));
-        let hashed_pwd = format!("{:x}", hasher.finalize());
-        let res = diesel::insert_into(users::table)
-            .values((users::username.eq(account), users::password.eq(hashed_pwd), users::salt.eq(salt)))
-            .execute(&mut db)?;
-        Ok(res)
+    fn signup(&self, mut db: Data<Pool<Postgres>>, account: String, credential: String) -> Pin<Box<dyn Future<Output = Result<usize, crate::error::Error>>>> {
+        Box::pin(async move {
+            let rng = thread_rng();
+            let salt: String = rng.sample_iter(Alphanumeric).take(32).map(|c| c as char).collect();
+            let mut hasher = Sha384::new();
+            hasher.update(format!("{}{}", credential, salt));
+            let hashed_pwd = format!("{:x}", hasher.finalize());
+            let res = query_as("INSERT INTO users (username, password, salt) VALUES ($1, $2, $3) RETURNING id")
+                .bind(account)
+                .bind(hashed_pwd)
+                .bind(salt)
+                .fetch_one(db.as_ref())
+                .await?;
+            Ok(res)
+        })
     }
 }
