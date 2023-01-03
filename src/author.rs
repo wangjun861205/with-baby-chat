@@ -41,15 +41,16 @@ impl JWTAuthor {
 
 impl Author for JWTAuthor {
     fn auth(&self, mut db: Data<Pool<Postgres>>, account: String, credential: String) -> Pin<Box<dyn Future<Output = Result<String, Error>>>> {
+        let secret = self.secret.clone();
         Box::pin(async move {
-            let user: User = query_as("SELECT * FROM users WHERE username = $1").bind(account).fetch_one(db.as_ref()).await?;
+            let user: User = query_as("SELECT * FROM users WHERE username = $1").bind(account.clone()).fetch_one(db.as_ref()).await?;
             let mut hasher = Sha384::new();
             hasher.update(format!("{}{}", credential, user.salt));
             let hashed_pwd = format!("{:x}", hasher.finalize());
             if user.password != hashed_pwd {
                 return Err(Error("invalid account".into()));
             }
-            let key: Hmac<Sha384> = Hmac::new_from_slice(&self.secret)?;
+            let key: Hmac<Sha384> = Hmac::new_from_slice(&secret)?;
             let token = Token::new(
                 Header {
                     algorithm: AlgorithmType::Hs384,
@@ -75,13 +76,11 @@ impl Author for JWTAuthor {
             let mut hasher = Sha384::new();
             hasher.update(format!("{}{}", credential, salt));
             let hashed_pwd = format!("{:x}", hasher.finalize());
-            let res = query_as("INSERT INTO users (username, password, salt) VALUES ($1, $2, $3) RETURNING id")
-                .bind(account)
-                .bind(hashed_pwd)
-                .bind(salt)
+            let res = query!("INSERT INTO users (username, password, salt) VALUES ($1, $2, $3) RETURNING id", account, hashed_pwd, salt)
                 .fetch_one(db.as_ref())
-                .await?;
-            Ok(res)
+                .await?
+                .id;
+            Ok(res as usize)
         })
     }
 }
