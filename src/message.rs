@@ -1,3 +1,4 @@
+use crate::models::{Channel, FriendApplication, JoinApplication};
 use crate::{websocket::WS, Author};
 use actix::Addr;
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,35 @@ pub enum NotifyLevel {
     Notify,
     Warning,
     Error,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InputMessage {
+    pub nonce: String,
+    pub signature: String,
+    pub token: Option<String>,
+    pub input: Input,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Input {
+    Login { username: String, password: String },
+    FindUser { phone: String },
+    AddFriend { uid: i32 },
+    FindChannel { q: String },
+    JoinChannel { cid: i32 },
+    FriendApplications { applications: Vec<FriendApplication> },
+    JoinApplications { applications: Vec<JoinApplication> },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Output {
+    LoginResponse { token: String },
+    FindUserResponse { uid: i32, username: String },
+    AddFriendResponse { result: String },
+    FindChannelResponse { channels: Vec<Channel> },
+    JoinChannelResponse { cid: i32 },
+    ApproveFriend,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
