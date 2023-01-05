@@ -66,7 +66,7 @@ impl Author for JWTAuthor {
         let mut hasher = Sha384::new();
         hasher.update(format!("{}{}", credential, salt));
         let hashed_pwd = format!("{:x}", hasher.finalize());
-        let res = query!("INSERT INTO users (username, password, salt) VALUES ($1, $2, $3) RETURNING id", account, hashed_pwd, salt)
+        let res = query!("INSERT INTO accounts (phone, password, salt) VALUES ($1, $2, $3) RETURNING id", account, hashed_pwd, salt)
             .fetch_one(&self.db)
             .await?
             .id;

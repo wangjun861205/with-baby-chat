@@ -1,10 +1,10 @@
 #![feature(async_fn_in_trait)]
 
 mod author;
+mod dao;
 mod error;
 mod message;
 mod models;
-mod schema;
 mod websocket;
 
 #[macro_use]
@@ -21,7 +21,7 @@ use actix_web::web::{self, post, Data, Json};
 use actix_web::{App, HttpRequest, HttpResponse, HttpResponseBuilder, HttpServer};
 use actix_web_actors::ws::WsResponseBuilder;
 use dotenv;
-use models::User;
+use models::{Account, AccountInsert, Channel, ChannelInsert, Friend, FriendApplication, FriendInsert, JoinApplication, Member, User};
 use serde::{Deserialize, Serialize};
 use sqlx::{self, postgres::PgPoolOptions};
 use std::collections::HashMap;
@@ -58,6 +58,23 @@ where
 {
     author.signup(data.username.clone(), data.password.clone()).await?;
     Ok(HttpResponseBuilder::new(StatusCode::OK).finish())
+}
+
+pub trait Dao {
+    async fn insert_account(&self, account: AccountInsert) -> Result<i32, Error>;
+    async fn get_account(&self, phone: String) -> Result<Option<Account>, Error>;
+    async fn insert_user(&self, user: User) -> Result<i32, Error>;
+    async fn get_user(&self, id: i32) -> Result<Option<User>, Error>;
+    async fn insert_channel(&self, channel: ChannelInsert) -> Result<i32, Error>;
+    async fn query_channel(&self, q: String) -> Result<Vec<Channel>, Error>;
+    async fn insert_friend_application(&self, app: FriendApplication) -> Result<i32, Error>;
+    async fn insert_join_application(&self, app: JoinApplication) -> Result<i32, Error>;
+    async fn insert_friend(&self, friend: FriendInsert) -> Result<i32, Error>;
+    async fn exists_friend(&self, user_a: i32, user_b: i32) -> Result<bool, Error>;
+    async fn delete_friend(&self, id: i32) -> Result<u64, Error>;
+    async fn insert_member(&self, member: Member) -> Result<i32, Error>;
+    async fn delete_member(&self, id: i32) -> Result<u64, Error>;
+    async fn exists_member(&self, user_id: i32, channel_id: i32) -> Result<bool, Error>;
 }
 
 #[actix_web::main]

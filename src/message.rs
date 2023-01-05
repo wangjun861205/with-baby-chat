@@ -1,7 +1,34 @@
-use crate::models::{Channel, FriendApplication, JoinApplication};
+use crate::models::{Channel, FriendApplication, JoinApplication, User};
 use crate::{websocket::WS, Author};
-use actix::Addr;
+use actix::{Addr, Message};
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Login {
+    pub phone: String,
+    pub password: String,
+}
+
+impl Message for Login {
+    type Result = ();
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginResponse {
+    pub phone: String,
+    pub token: String,
+    pub err: String,
+}
+
+pub struct RepeatLoginWarning;
+
+impl Message for RepeatLoginWarning {
+    type Result = ();
+}
+
+impl Message for LoginResponse {
+    type Result = ();
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NotifyLevel {
@@ -11,60 +38,62 @@ pub enum NotifyLevel {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct InputMessage {
-    pub nonce: String,
-    pub signature: String,
-    pub token: Option<String>,
-    pub input: Input,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub enum Input {
-    Login { username: String, password: String },
     FindUser { phone: String },
-    AddFriend { uid: i32 },
+    AddFriend { phone: String },
     FindChannel { q: String },
     JoinChannel { cid: i32 },
     FriendApplications { applications: Vec<FriendApplication> },
     JoinApplications { applications: Vec<JoinApplication> },
+    ApproveFriend { phone: i32 },
+    RejectFriend { phone: i32 },
+    ApproveJoin { cid: i32 },
+    RejectJoin { cid: i32 },
+}
+
+impl Message for Input {
+    type Result = ();
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InputMessage {
+    pub token: String,
+    pub input: Input,
+}
+
+impl Message for InputMessage {
+    type Result = ();
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Result {
+    Approved,
+    Rejected,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Output {
     LoginResponse { token: String },
     FindUserResponse { uid: i32, username: String },
-    AddFriendResponse { result: String },
+    AddFriendResponse { user: Option<User> },
     FindChannelResponse { channels: Vec<Channel> },
-    JoinChannelResponse { cid: i32 },
-    ApproveFriend,
+    JoinChannelResponse { cid: i32, name: String },
+    AddFriendResult { uid: i32, result: Result },
+    JoinChannelResult { uid: i32, result: Result },
+    Notify { level: NotifyLevel, content: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum OuterMessage {
-    In { token: String, to: String, content: String },
-    Out { from: String, content: String },
-    Broadcast { token: String, content: String },
-    Users(Vec<String>),
-    Notify { level: NotifyLevel, content: String },
-    Login { username: String, password: String, signature: String },
-    LoginResponse { token: String, anti_replay_token: String },
-    AntiReplayToken,
-    AntiReplayTokenResponse { token: String },
+pub struct OutputMessage {
+    pub output: Output,
 }
 
-#[derive(Debug)]
-pub enum InnerMessage<A: Author + Clone + Unpin + 'static> {
-    Register { name: String, addr: Addr<WS<A>> },
-    Deregister { name: String },
-    Send { from: String, to: String, content: String },
-    Users(Vec<String>),
-    Broadcast { from: String, content: String },
-    Out { from: String, content: String },
-    Notify { level: NotifyLevel, content: String },
-    Login { username: String, password: String },
-    LoginResponse { token: String },
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Command {
+    pub from: String,
+    pub input: Input,
 }
 
-impl<A: Author + Clone + Unpin + 'static> actix::Message for InnerMessage<A> {
+impl Message for Command {
     type Result = ();
 }
