@@ -1,8 +1,10 @@
 use crate::error::Error;
-use crate::models::{Account, AccountInsert, ChannelInsert, FriendInsert, User};
+use crate::models::{Account, AccountInsert, ChannelInsert, FriendApplicationInsert, FriendInsert, JoinApplicationInsert, MemberInsert, User, UserInsert};
 use crate::Dao;
+use actix_web::web::Data;
 use sqlx::{query, query_as, Pool, Postgres};
 
+#[derive(Debug, Clone)]
 pub struct PostgresDao {
     db: Pool<Postgres>,
 }
@@ -71,5 +73,43 @@ impl Dao for PostgresDao {
             .fetch_one(&self.db)
             .await?;
         Ok(res.id)
+    }
+
+    async fn insert_friend_application(&self, app: FriendApplicationInsert) -> Result<i32, Error> {
+        let res = query!(r#"INSERT INTO friend_applications ("from", "to") VALUES ($1, $2) RETURNING id"#, app.from, app.to)
+            .fetch_one(&self.db)
+            .await?;
+        Ok(res.id)
+    }
+
+    async fn insert_join_application(&self, app: JoinApplicationInsert) -> Result<i32, Error> {
+        let res = query!(r#"INSERT INTO join_applications ("from", "to") VALUES ($1, $2) RETURNING id"#, app.from, app.to)
+            .fetch_one(&self.db)
+            .await?;
+        Ok(res.id)
+    }
+
+    async fn insert_member(&self, member: MemberInsert) -> Result<i32, Error> {
+        let res = query!(r#"INSERT INTO members (channel, "user") VALUES ($1, $2) RETURNING id"#, member.channel, member.user)
+            .fetch_one(&self.db)
+            .await?;
+        Ok(res.id)
+    }
+
+    async fn insert_user(&self, user: UserInsert) -> Result<i32, Error> {
+        let res = query!(r#"INSERT INTO users (name, account) VALUES ($1, $2) RETURNING id"#, user.name, user.account)
+            .fetch_one(&self.db)
+            .await?;
+        Ok(res.id)
+    }
+
+    async fn query_channel(&self, q: String) -> Result<Vec<crate::models::Channel>, Error> {
+        let res = query_as(r#"SELECT * FROM channels WHERE name LIKE '%$1%'"#).bind(q).fetch_all(&self.db).await?;
+        Ok(res)
+    }
+
+    async fn get_user_by_account_id(&self, account: i32) -> Result<Option<User>, Error> {
+        let res = query_as(r#"SELECT * FROM users WHERE account = $1"#).bind(account).fetch_optional(&self.db).await?;
+        Ok(res)
     }
 }

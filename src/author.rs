@@ -19,57 +19,40 @@ pub struct User {
 #[derive(Debug, Clone)]
 pub struct JWTAuthor {
     secret: Vec<u8>,
-    db: Pool<Postgres>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claim {
-    pub account: String,
+    pub uid: i32,
 }
 
 impl JWTAuthor {
-    pub fn new(db: Pool<Postgres>, secret: Vec<u8>) -> Self {
-        Self { db, secret }
+    pub fn new(secret: Vec<u8>) -> Self {
+        Self { secret }
     }
 }
 
 impl Author for JWTAuthor {
-    async fn auth(&self, account: String, credential: String) -> Result<Option<String>, Error> {
-        let user: User = query_as("SELECT * FROM users WHERE username = $1").bind(account.clone()).fetch_one(&self.db).await?;
+    fn hash_password(&self, pwd: String, salt: String) -> String {
         let mut hasher = Sha384::new();
-        hasher.update(format!("{}{}", credential, user.salt));
-        let hashed_pwd = format!("{:x}", hasher.finalize());
-        if user.password != hashed_pwd {
-            return Ok(None);
-        }
-        let key: Hmac<Sha384> = Hmac::new_from_slice(&self.secret)?;
-        let token = Token::new(
-            Header {
-                algorithm: AlgorithmType::Hs384,
-                ..Default::default()
-            },
-            Claim { account },
-        )
-        .sign_with_key(&key)?;
-        Ok(Some(token.as_str().to_owned()))
+        hasher.update(pwd);
+        hasher.update(salt);
+        format!("{:x}", hasher.finalize())
     }
 
-    fn verify(&self, token_str: String) -> Result<String, crate::error::Error> {
+    fn gen_token(&self, uid: i32) -> Result<String, Error> {
+        let key: Hmac<Sha384> = Hmac::new_from_slice(&self.secret)?;
+        let header = Header {
+            algorithm: AlgorithmType::Hs384,
+            ..Default::default()
+        };
+        let token = Token::new(header, Claim { uid }).sign_with_key(&key)?;
+        Ok(token.as_str().to_owned())
+    }
+
+    fn verify(&self, token_str: String) -> Result<i32, crate::error::Error> {
         let key: Hmac<Sha384> = Hmac::new_from_slice(&self.secret)?;
         let token: Token<Header, Claim, _> = token_str.verify_with_key(&key)?;
-        Ok(token.claims().account.clone())
-    }
-
-    async fn signup(&self, account: String, credential: String) -> Result<usize, crate::error::Error> {
-        let rng = thread_rng();
-        let salt: String = rng.sample_iter(Alphanumeric).take(32).map(|c| c as char).collect();
-        let mut hasher = Sha384::new();
-        hasher.update(format!("{}{}", credential, salt));
-        let hashed_pwd = format!("{:x}", hasher.finalize());
-        let res = query!("INSERT INTO accounts (phone, password, salt) VALUES ($1, $2, $3) RETURNING id", account, hashed_pwd, salt)
-            .fetch_one(&self.db)
-            .await?
-            .id;
-        Ok(res as usize)
+        Ok(token.claims().uid.clone())
     }
 }

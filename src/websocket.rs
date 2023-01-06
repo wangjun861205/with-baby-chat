@@ -1,33 +1,34 @@
 use crate::message::{Command, Input, InputMessage, Login, LoginResponse, NotifyLevel, Output, OutputMessage, RepeatLoginWarning};
-use crate::{Author, LoginRequest};
+use crate::{Author, Dao};
 use actix::{Actor, Addr, AsyncContext, Handler, StreamHandler, WrapFuture};
 use actix_web::web::Data;
 use actix_web_actors::ws::{Message, ProtocolError, WebsocketContext};
-use sha2::{Digest, Sha384};
 use std::collections::HashMap;
 use std::sync::RwLock;
-use uuid::Uuid;
 
 #[derive(Clone)]
-pub struct WS<A: Author + Clone + Unpin + 'static> {
+pub struct WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     pub name: String,
     pub author: Data<A>,
-    pub users: Data<RwLock<HashMap<String, Option<Addr<WS<A>>>>>>,
-    pub anti_replay_token: String,
+    pub users: Data<RwLock<HashMap<String, Option<Addr<WS<A, D>>>>>>,
+    pub dao: Data<D>,
 }
 
-impl<A: Author + Clone + Unpin + 'static> WS<A> {
-    pub fn new(name: String, author: Data<A>, users: Data<RwLock<HashMap<String, Option<Addr<WS<A>>>>>>) -> Self {
-        Self {
-            name,
-            author,
-            users,
-            anti_replay_token: Uuid::new_v4().to_string(),
-        }
+impl<A, D> WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
+    pub fn new(name: String, author: Data<A>, users: Data<RwLock<HashMap<String, Option<Addr<WS<A, D>>>>>>, dao: Data<D>) -> Self {
+        Self { name, author, users, dao }
     }
 
     async fn handle_login(self, phone: String, password: String) -> LoginResponse {
-        match self.author.auth(phone.clone(), password).await {
+        match self.dao.get_account(phone.clone()).await {
             Err(e) => {
                 return LoginResponse {
                     phone,
@@ -35,25 +36,68 @@ impl<A: Author + Clone + Unpin + 'static> WS<A> {
                     err: e.to_string(),
                 }
             }
-            Ok(token) => {
-                if let Some(t) = token {
-                    return LoginResponse { phone, token: t, err: "".into() };
+            Ok(acct) => {
+                if let Some(a) = acct {
+                    let hashed_pwd = self.author.hash_password(password, a.salt);
+                    if hashed_pwd != a.password {
+                        return LoginResponse {
+                            phone,
+                            token: "".into(),
+                            err: "invalid phone or password".into(),
+                        };
+                    }
+                    match self.dao.get_user_by_account_id(a.id).await {
+                        Ok(user) => {
+                            if let Some(u) = user {
+                                match self.author.gen_token(u.id) {
+                                    Ok(token) => return LoginResponse { phone, token: token, err: "".into() },
+                                    Err(e) => {
+                                        return LoginResponse {
+                                            phone,
+                                            token: "".into(),
+                                            err: e.to_string(),
+                                        }
+                                    }
+                                }
+                            }
+                            return LoginResponse {
+                                phone,
+                                token: "".into(),
+                                err: "user not exists".into(),
+                            };
+                        }
+                        Err(e) => {
+                            return LoginResponse {
+                                phone,
+                                token: "".into(),
+                                err: e.to_string(),
+                            }
+                        }
+                    }
                 }
                 return LoginResponse {
                     phone,
                     token: "".into(),
-                    err: "invalid account".into(),
+                    err: "invalid phone or password".into(),
                 };
             }
         }
     }
 }
 
-impl<A: Author + Clone + Unpin + 'static> Actor for WS<A> {
+impl<A, D> Actor for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     type Context = WebsocketContext<Self>;
 }
 
-impl<A: Author + Clone + Unpin + 'static> StreamHandler<Result<Message, ProtocolError>> for WS<A> {
+impl<A, D> StreamHandler<Result<Message, ProtocolError>> for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     fn handle(&mut self, item: Result<Message, ProtocolError>, ctx: &mut Self::Context) {
         let item = item.unwrap();
         match item {
@@ -64,7 +108,7 @@ impl<A: Author + Clone + Unpin + 'static> StreamHandler<Result<Message, Protocol
                 }
                 match serde_json::from_str::<InputMessage>(&s) {
                     Ok(msg) => match self.author.verify(msg.token) {
-                        Ok(phone) => ctx.address().do_send(Command { from: phone, input: msg.input }),
+                        Ok(uid) => ctx.address().do_send(Command { from: uid, input: msg.input }),
                         Err(e) => ctx.text(
                             serde_json::to_string(&OutputMessage {
                                 output: Output::Notify {
@@ -99,7 +143,11 @@ impl<A: Author + Clone + Unpin + 'static> StreamHandler<Result<Message, Protocol
     }
 }
 
-impl<A: Author + Clone + Unpin + 'static> Handler<Command> for WS<A> {
+impl<A, D> Handler<Command> for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     type Result = ();
     fn handle(&mut self, msg: Command, ctx: &mut Self::Context) -> Self::Result {
         match msg.input {
@@ -109,7 +157,11 @@ impl<A: Author + Clone + Unpin + 'static> Handler<Command> for WS<A> {
     }
 }
 
-impl<A: Author + Clone + Unpin + 'static> Handler<Login> for WS<A> {
+impl<A, D> Handler<Login> for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     type Result = ();
     fn handle(&mut self, msg: Login, ctx: &mut Self::Context) -> Self::Result {
         let addr = ctx.address();
@@ -124,7 +176,11 @@ impl<A: Author + Clone + Unpin + 'static> Handler<Login> for WS<A> {
     }
 }
 
-impl<A: Author + Clone + Unpin + 'static> Handler<LoginResponse> for WS<A> {
+impl<A, D> Handler<LoginResponse> for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     type Result = ();
     fn handle(&mut self, msg: LoginResponse, ctx: &mut Self::Context) -> Self::Result {
         if msg.token != "" {
@@ -138,7 +194,11 @@ impl<A: Author + Clone + Unpin + 'static> Handler<LoginResponse> for WS<A> {
     }
 }
 
-impl<A: Author + Clone + Unpin + 'static> Handler<RepeatLoginWarning> for WS<A> {
+impl<A, D> Handler<RepeatLoginWarning> for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
     type Result = ();
     fn handle(&mut self, _: RepeatLoginWarning, ctx: &mut Self::Context) -> Self::Result {
         ctx.text(

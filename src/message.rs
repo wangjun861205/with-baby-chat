@@ -90,7 +90,7 @@ pub struct OutputMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Command {
-    pub from: String,
+    pub from: i32,
     pub input: Input,
 }
 
