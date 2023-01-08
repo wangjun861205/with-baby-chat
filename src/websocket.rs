@@ -151,10 +151,38 @@ where
     type Result = ();
     fn handle(&mut self, msg: Command, ctx: &mut Self::Context) -> Self::Result {
         match msg.input {
-            Input::AddFriend { phone } => {}
+            Input::FindUser { phone } => {
+                let addr = ctx.address();
+                let dao = self.dao.clone();
+                ctx.spawn(
+                    async move {
+                        match self.dao.get_account(phone).await {
+                            Err(e) => addr.do_send(OutputMessage {
+                                output: Output::Notify {
+                                    level: NotifyLevel::Error,
+                                    content: e.to_string(),
+                                },
+                            }),
+                            Ok(user) => addr.do_send(OutputMessage {
+                                output: Output::FindUserResponse { user },
+                            }),
+                        }
+                    }
+                    .into_actor(&self.clone()),
+                )
+            }
             _ => {}
         }
     }
+}
+
+impl<A, D> Handler<OutputMessage> for WS<A, D>
+where
+    A: Author + Clone + Unpin + 'static,
+    D: Dao + Clone + Unpin + 'static,
+{
+    type Result = ();
+    fn handle(&mut self, msg: OutputMessage, ctx: &mut Self::Context) -> Self::Result {}
 }
 
 impl<A, D> Handler<Login> for WS<A, D>

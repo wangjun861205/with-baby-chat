@@ -74,7 +74,7 @@ pub enum Result {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Output {
     LoginResponse { token: String },
-    FindUserResponse { uid: i32, username: String },
+    FindUserResponse { user: Option<User> },
     AddFriendResponse { user: Option<User> },
     FindChannelResponse { channels: Vec<Channel> },
     JoinChannelResponse { cid: i32, name: String },
@@ -86,6 +86,10 @@ pub enum Output {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OutputMessage {
     pub output: Output,
+}
+
+impl Message for OutputMessage {
+    type Result = ();
 }
 
 #[derive(Debug, Serialize, Deserialize)]
