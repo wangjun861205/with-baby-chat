@@ -1,20 +1,9 @@
 use crate::error::Error;
 use crate::Author;
-use actix_web::web::Data;
 use hmac::{Hmac, Mac};
 use jwt::{AlgorithmType, Header, SignWithKey, Token, VerifyWithKey};
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
-use sqlx::{query, query_as, FromRow, Pool, Postgres};
-
-#[derive(FromRow)]
-pub struct User {
-    id: i32,
-    username: String,
-    password: String,
-    salt: String,
-}
 
 #[derive(Debug, Clone)]
 pub struct JWTAuthor {

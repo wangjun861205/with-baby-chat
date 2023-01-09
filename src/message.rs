@@ -1,6 +1,5 @@
 use crate::models::{Channel, FriendApplication, JoinApplication, User};
-use crate::{websocket::WS, Author};
-use actix::{Addr, Message};
+use actix::Message;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]

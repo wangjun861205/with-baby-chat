@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use actix_web::{http::StatusCode, CustomizeResponder, HttpResponse, HttpResponseBuilder, Responder, ResponseError};
+use actix_web::{http::StatusCode, HttpResponse, HttpResponseBuilder, ResponseError};
 
 #[derive(Debug)]
 pub struct Error(pub String);

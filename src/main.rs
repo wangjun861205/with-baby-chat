@@ -7,9 +7,6 @@ mod message;
 mod models;
 mod websocket;
 
-#[macro_use]
-extern crate diesel;
-
 use std::sync::RwLock;
 
 use crate::author::JWTAuthor;
@@ -17,14 +14,12 @@ use crate::dao::PostgresDao;
 use crate::error::Error;
 use crate::websocket::WS;
 use actix::{self, Addr};
-use actix_web::http::StatusCode;
-use actix_web::web::{self, post, Data, Json};
-use actix_web::{App, HttpRequest, HttpResponse, HttpResponseBuilder, HttpServer};
-use actix_web_actors::ws::WsResponseBuilder;
+use actix_web::web::{self, get, Data};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer};
+use actix_web_actors::ws::{self};
 use dotenv;
-use models::{Account, AccountInsert, Channel, ChannelInsert, FriendApplicationInsert, FriendInsert, JoinApplication, JoinApplicationInsert, MemberInsert, User, UserInsert};
-use serde::{Deserialize, Serialize};
-use sqlx::{self, postgres::PgPoolOptions, Pool, Postgres};
+use models::{Account, AccountInsert, Channel, ChannelInsert, FriendApplicationInsert, FriendInsert, JoinApplicationInsert, MemberInsert, User, UserInsert};
+use sqlx::{self, postgres::PgPoolOptions};
 use std::collections::HashMap;
 
 pub trait Author {
@@ -33,25 +28,13 @@ pub trait Author {
     fn verify(&self, token: String) -> Result<i32, Error>;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LoginRequest {
-    pub username: String,
-    pub password: String,
-}
-
-async fn login<A, D>(
-    author: Data<A>,
-    users: Data<RwLock<HashMap<String, Option<Addr<WS<A, D>>>>>>,
-    Json(data): Json<LoginRequest>,
-    dao: Data<D>,
-    req: HttpRequest,
-    stream: web::Payload,
-) -> Result<HttpResponse, Error>
+async fn start<A, D>(author: Data<A>, users: Data<RwLock<HashMap<String, Option<Addr<WS<A, D>>>>>>, dao: Data<D>, req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error>
 where
     A: Author + Clone + Unpin + 'static,
     D: Dao + Clone + Unpin + 'static,
 {
-    let res = WsResponseBuilder::new(WS::new(data.username.clone(), author.clone(), users.clone(), dao.clone()), &req, stream).start()?;
+    let actor = WS::new("".into(), author.clone(), users.clone(), dao.clone());
+    let res = ws::start(actor, &req, stream)?;
     Ok(res)
 }
 
@@ -75,18 +58,21 @@ pub trait Dao {
 
 #[actix_web::main]
 async fn main() -> Result<(), std::io::Error> {
+    env_logger::init();
     dotenv::dotenv().unwrap();
     let db = PgPoolOptions::new().max_connections(5).connect(&std::env::var("DATABASE_URL").unwrap()).await.unwrap();
     let users: Vec<User> = sqlx::query_as("SELECT * FROM users").fetch_all(&db).await.unwrap();
     let dao = Data::new(PostgresDao::new(db));
-    let users = Data::new(RwLock::new(users.into_iter().map(|u| (u.name, None)).collect::<HashMap<String, Option<WS<JWTAuthor, PostgresDao>>>>()));
-    let author = JWTAuthor::new("abcdegfh".chars().map(|c| c as u8).collect());
+    let users = Data::new(RwLock::new(
+        users.into_iter().map(|u| (u.name, None)).collect::<HashMap<String, Option<Addr<WS<JWTAuthor, PostgresDao>>>>>(),
+    ));
+    let author = Data::new(JWTAuthor::new("abcdegfh".chars().map(|c| c as u8).collect()));
     HttpServer::new(move || {
         App::new()
-            .app_data(Data::new(author.clone()))
+            .app_data(author.clone())
             .app_data(users.clone())
             .app_data(dao.clone())
-            .route("/login", post().to(login::<JWTAuthor, PostgresDao>))
+            .route("/", get().to(start::<JWTAuthor, PostgresDao>))
     })
     .bind("0.0.0.0:8000")
     .unwrap()

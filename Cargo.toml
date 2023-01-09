@@ -11,6 +11,7 @@ actix-web = "4.2.1"
 actix-web-actors = "4.1.0"
 diesel = { version = "2.0.2", features = ["postgres", "r2d2"] }
 dotenv = "0.15.0"
+env_logger = "0.10.0"
 hmac = "0.12.1"
 jwt = "0.16.0"
 r2d2 = "0.8.10"

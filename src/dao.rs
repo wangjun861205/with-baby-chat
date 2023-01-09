@@ -1,7 +1,6 @@
 use crate::error::Error;
 use crate::models::{Account, AccountInsert, ChannelInsert, FriendApplicationInsert, FriendInsert, JoinApplicationInsert, MemberInsert, User, UserInsert};
 use crate::Dao;
-use actix_web::web::Data;
 use sqlx::{query, query_as, Pool, Postgres};
 
 #[derive(Debug, Clone)]

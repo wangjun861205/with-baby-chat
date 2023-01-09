@@ -83,6 +83,41 @@ where
             }
         }
     }
+
+    async fn handle_find_user(self, phone: String) -> OutputMessage {
+        match self.dao.get_account(phone).await {
+            Err(e) => {
+                return OutputMessage {
+                    output: Output::Notify {
+                        level: NotifyLevel::Error,
+                        content: e.to_string(),
+                    },
+                }
+            }
+            Ok(acct) => match acct {
+                None => {
+                    return OutputMessage {
+                        output: Output::FindUserResponse { user: None },
+                    }
+                }
+                Some(a) => match self.dao.get_user_by_account_id(a.id).await {
+                    Err(e) => {
+                        return OutputMessage {
+                            output: Output::Notify {
+                                level: NotifyLevel::Error,
+                                content: e.to_string(),
+                            },
+                        }
+                    }
+                    Ok(u) => {
+                        return OutputMessage {
+                            output: Output::FindUserResponse { user: u },
+                        }
+                    }
+                },
+            },
+        }
+    }
 }
 
 impl<A, D> Actor for WS<A, D>
@@ -153,23 +188,14 @@ where
         match msg.input {
             Input::FindUser { phone } => {
                 let addr = ctx.address();
-                let dao = self.dao.clone();
+                let handler = self.clone().handle_find_user(phone);
                 ctx.spawn(
                     async move {
-                        match self.dao.get_account(phone).await {
-                            Err(e) => addr.do_send(OutputMessage {
-                                output: Output::Notify {
-                                    level: NotifyLevel::Error,
-                                    content: e.to_string(),
-                                },
-                            }),
-                            Ok(user) => addr.do_send(OutputMessage {
-                                output: Output::FindUserResponse { user },
-                            }),
-                        }
+                        let output = handler.await;
+                        addr.do_send(output);
                     }
-                    .into_actor(&self.clone()),
-                )
+                    .into_actor(self),
+                );
             }
             _ => {}
         }
